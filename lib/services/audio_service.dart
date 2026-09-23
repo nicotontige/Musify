@@ -2038,7 +2038,12 @@ class MusifyAudioHandler extends BaseAudioHandler {
     Map<String, dynamic>? options,
   ]) async {
     try {
-      return await _buildChildren(parentMediaId);
+      final children = await _buildChildren(parentMediaId);
+      logger.log(
+        'getChildren($parentMediaId) -> ${children.length}: '
+        '${children.take(3).map((child) => child.id).join(', ')}',
+      );
+      return children;
     } catch (e, stackTrace) {
       logger.log(
         'Error building browse children for $parentMediaId',
@@ -2233,6 +2238,7 @@ class MusifyAudioHandler extends BaseAudioHandler {
   @override
   Future<MediaItem?> getMediaItem(String mediaId) async {
     try {
+      logger.log('getMediaItem: $mediaId');
       final parsed = _parseSongMediaId(mediaId);
       if (parsed != null) {
         final songs = await _songsForContainer(parsed.container);
@@ -2333,6 +2339,7 @@ class MusifyAudioHandler extends BaseAudioHandler {
   @override
   Future<void> play() async {
     try {
+      logger.log('play() prepared=$_preparedMediaId queue=${_queueList.length}');
       // A car that browses through prepareFromMediaId asks for the song it
       // prepared, not for whatever was played last.
       final prepared = _preparedMediaId;
@@ -3153,7 +3160,10 @@ class MusifyAudioHandler extends BaseAudioHandler {
   }
 
   @override
-  Future<void> skipToQueueItem(int index) => skipToSong(index);
+  Future<void> skipToQueueItem(int index) {
+    logger.log('skipToQueueItem: $index of ${_queueList.length}');
+    return skipToSong(index);
+  }
 
   @override
   Future<void> skipToNext() async {
