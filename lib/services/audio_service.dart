@@ -149,6 +149,8 @@ class MusifyAudioHandler extends BaseAudioHandler {
 
   Stream<PlaybackState> get playbackStateStream => _playbackStateStream;
 
+  static const _likeCustomAction = 'toggleLike';
+
   List<MediaControl> _controls(bool playing) {
     final hasMultipleTracks = _queueList.length > 1;
 
@@ -163,7 +165,34 @@ class MusifyAudioHandler extends BaseAudioHandler {
         MediaControl.skipToNext
       else
         MediaControl.fastForward,
+      _likeControl(),
     ];
+  }
+
+  /// Liking from a car: Android Auto draws the extra controls a session
+  /// declares, and the icon has to say which way the toggle goes.
+  MediaControl _likeControl() {
+    final liked = isSongAlreadyLiked(currentSong?['ytid']);
+    return MediaControl.custom(
+      androidIcon: liked ? 'drawable/ic_liked' : 'drawable/ic_like',
+      label: liked ? 'Unlike' : 'Like',
+      name: _likeCustomAction,
+    );
+  }
+
+  Future<void> _toggleCurrentSongLike() async {
+    final currentMediaItem = mediaItem.valueOrNull;
+    final song =
+        currentSong ??
+        (currentMediaItem == null ? null : mediaItemToMap(currentMediaItem));
+    final ytid = song?['ytid']?.toString();
+    if (ytid == null || ytid.isEmpty) {
+      logger.log('Nothing playing to like');
+      return;
+    }
+
+    await updateSongLikeStatus(ytid, !isSongAlreadyLiked(ytid), songData: song);
+    _updatePlaybackState(force: true);
   }
 
   final _processingStateMap = {
@@ -1280,6 +1309,9 @@ class MusifyAudioHandler extends BaseAudioHandler {
             MediaControl.pause,
             MediaControl.stop,
             MediaControl.skipToNext,
+            // Kept in step with _controls so the like button does not blink
+            // out of the notification on every song change.
+            _likeControl(),
           ],
           systemActions: const {
             MediaAction.seek,
@@ -1891,6 +1923,8 @@ class MusifyAudioHandler extends BaseAudioHandler {
     }
 
     watch(userLikedSongsList, const [_rootLiked]);
+    // Liking from the app has to flip the control the car is showing.
+    userLikedSongsList.addListener(() => _updatePlaybackState(force: true));
     watch(userOfflineSongs, const [_rootOffline]);
     watch(userRecentlyPlayed, const [_rootRecent, AudioService.recentRootId]);
     watch(userCustomPlaylists, const [_rootPlaylists]);
@@ -3055,6 +3089,9 @@ class MusifyAudioHandler extends BaseAudioHandler {
   Future<void> customAction(String name, [Map<String, dynamic>? extras]) async {
     try {
       switch (name) {
+        case _likeCustomAction:
+          await _toggleCurrentSongLike();
+          break;
         case 'clearQueue':
           clearQueue();
           break;
