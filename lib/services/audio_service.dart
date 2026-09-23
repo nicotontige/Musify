@@ -101,10 +101,6 @@ class MusifyAudioHandler extends BaseAudioHandler {
   int _songTransitionCounter = 0;
   Future<Map?>? _pendingRecommendation;
 
-  /// Media id handed over by a media browser client that prepares a song
-  /// before asking for playback, waiting for the play() that follows.
-  String? _preparedMediaId;
-
   bool _completionEventPending = false;
   bool _completionHandlerLoadStarted = false;
 
@@ -1537,9 +1533,6 @@ class MusifyAudioHandler extends BaseAudioHandler {
     final currentTransitionId = _songTransitionCounter;
     _currentLoadingIndex = index;
     _currentLoadingTransitionId = currentTransitionId;
-    // Something is being loaded, so a song prepared earlier is no longer what
-    // the next play() is about - a resume after a pause would take it.
-    _preparedMediaId = null;
 
     try {
       final previousQueueIndex = _currentQueueIndex;
@@ -2267,13 +2260,22 @@ class MusifyAudioHandler extends BaseAudioHandler {
       return;
     }
 
-    // Show what the next play() will start, and remember it. Nothing is
-    // loaded into the player yet: a car that prepares before playing gets
-    // its song from play(), not from a ready state we never backed with a
-    // source.
-    _preparedMediaId = mediaId;
     mediaItem.add(item);
-    _updatePlaybackState(force: true);
+    queue.add([item]);
+    playbackState.add(
+      PlaybackState(
+        controls: _controls(false),
+        systemActions: const {
+          MediaAction.seek,
+          MediaAction.seekForward,
+          MediaAction.seekBackward,
+        },
+        androidCompactActionIndices: const [0, 1, 3],
+        processingState: AudioProcessingState.ready,
+        queueIndex: 0,
+        updateTime: DateTime.now(),
+      ),
+    );
   }
 
   Future<bool> _playFromContainer(String containerId, String token) async {
@@ -2339,16 +2341,7 @@ class MusifyAudioHandler extends BaseAudioHandler {
   @override
   Future<void> play() async {
     try {
-      logger.log('play() prepared=$_preparedMediaId queue=${_queueList.length}');
-      // A car that browses through prepareFromMediaId asks for the song it
-      // prepared, not for whatever was played last.
-      final prepared = _preparedMediaId;
-      if (prepared != null) {
-        _preparedMediaId = null;
-        await playFromMediaId(prepared);
-        return;
-      }
-
+      logger.log('play() queue=${_queueList.length}');
       if (audioPlayer.audioSource == null) {
         // A queue restored at launch carries no loaded source yet. Start it
         // where it stopped, rather than dropping it for a recently played song.
@@ -2403,7 +2396,6 @@ class MusifyAudioHandler extends BaseAudioHandler {
     _completionEventPending = false;
     _currentLoadingIndex = -1;
     _currentLoadingTransitionId = -1;
-    _preparedMediaId = null;
     _lastError = null;
     _consecutiveErrors = 0;
     try {
