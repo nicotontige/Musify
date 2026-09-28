@@ -252,17 +252,6 @@ class MusifyAudioHandler extends BaseAudioHandler {
           },
         );
 
-    // Saving the position wants a far slower tick than skipping a segment
-    // does, so it gets its own subscription rather than a shared one.
-    audioPlayer.positionStream
-        .throttleTime(const Duration(seconds: 1))
-        .listen(
-          _savePlaybackPosition,
-          onError: (error, stackTrace) {
-            _logStreamError('Position saving stream error', error, stackTrace);
-          },
-        );
-
     audioPlayer.durationStream.listen(
       (duration) {
         if (_currentQueueIndex < _queueList.length &&
