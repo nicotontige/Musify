@@ -243,7 +243,10 @@ class MusifyAudioHandler extends BaseAudioHandler {
     audioPlayer.positionStream
         .throttleTime(const Duration(milliseconds: 200))
         .listen(
-          _skipSponsoredSegment,
+          (position) {
+            _skipSponsoredSegment(position);
+            _savePlaybackPosition(position);
+          },
           onError: (error, stackTrace) {
             _logStreamError('Position stream error', error, stackTrace);
           },
