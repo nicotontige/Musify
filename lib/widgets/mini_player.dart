@@ -75,9 +75,10 @@ class MiniPlayer extends StatelessWidget {
               if (state == null) return const SizedBox.shrink();
 
               final hasNext =
-                  state.queue.length > 1 &&
-                  (state.playbackState.queueIndex ?? 0) <
-                      state.queue.length - 1;
+                  (state.queue.length > 1 &&
+                      (state.playbackState.queueIndex ?? 0) <
+                          state.queue.length - 1) ||
+                  audioHandler.canFetchRecommendedSong;
 
               return _MiniPlayerBody(
                 colorScheme: colorScheme,

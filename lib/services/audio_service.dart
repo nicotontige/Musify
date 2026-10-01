@@ -99,6 +99,10 @@ class MusifyAudioHandler extends BaseAudioHandler {
   bool _pendingForcedPlaybackStateUpdate = false;
   int _songTransitionCounter = 0;
 
+  /// The recommendation fetch in flight, with the song it was started from.
+  Future<Map<String, dynamic>?>? _pendingRecommendation;
+  String? _pendingRecommendationBase;
+
   bool _completionEventPending = false;
   bool _completionHandlerLoadStarted = false;
 
@@ -165,7 +169,7 @@ class MusifyAudioHandler extends BaseAudioHandler {
         MediaControl.rewind,
       if (playing) MediaControl.pause else MediaControl.play,
       MediaControl.stop,
-      if (hasMultipleTracks)
+      if (hasMultipleTracks || canFetchRecommendedSong)
         MediaControl.skipToNext
       else
         MediaControl.fastForward,
@@ -856,19 +860,7 @@ class MusifyAudioHandler extends BaseAudioHandler {
     if (baseYtid == null || baseYtid.isEmpty) return;
 
     try {
-      final knownYtids = {
-        for (final song in [..._queueList, ..._historyList])
-          if (song['ytid'] != null) song['ytid'].toString(),
-      };
-
-      final recommended =
-          await getSimilarSong(baseYtid, excludedYtIds: knownYtids).timeout(
-            const Duration(seconds: 10),
-            onTimeout: () {
-              logger.log('Background song fetch timed out');
-              return null;
-            },
-          );
+      final recommended = await _fetchRecommendedSong(baseYtid);
 
       // The user may have skipped, paused or extended the queue meanwhile.
       final isStillRelevant =
@@ -881,6 +873,85 @@ class MusifyAudioHandler extends BaseAudioHandler {
     } catch (e, stackTrace) {
       logger.log(
         'Error in background song addition',
+        error: e,
+        stackTrace: stackTrace,
+      );
+    }
+  }
+
+  /// The song the player would pick after [baseYtid]. Callers share a single
+  /// fetch, so a second press on next while the first one waits cannot end up
+  /// queueing two songs.
+  Future<Map<String, dynamic>?> _fetchRecommendedSong(String baseYtid) {
+    final pending = _pendingRecommendation;
+    if (pending != null && _pendingRecommendationBase == baseYtid) {
+      return pending;
+    }
+
+    final knownYtids = {
+      for (final song in [..._queueList, ..._historyList])
+        if (song['ytid'] != null) song['ytid'].toString(),
+    };
+
+    late final Future<Map<String, dynamic>?> fetch;
+    fetch = getSimilarSong(baseYtid, excludedYtIds: knownYtids)
+        .timeout(
+          const Duration(seconds: 10),
+          onTimeout: () {
+            logger.log('Recommended song fetch timed out');
+            return null;
+          },
+        )
+        .whenComplete(() {
+          if (identical(_pendingRecommendation, fetch)) {
+            _pendingRecommendation = null;
+            _pendingRecommendationBase = null;
+          }
+        });
+
+    _pendingRecommendation = fetch;
+    _pendingRecommendationBase = baseYtid;
+    return fetch;
+  }
+
+  /// Plays a recommendation when the user skips with nothing left in the
+  /// queue: the same song that would have followed on its own once the
+  /// current one ended.
+  Future<void> _skipToRecommendedSong() async {
+    final baseYtid = _getCurrentSongForRecommendations()?['ytid']?.toString();
+    if (baseYtid == null || baseYtid.isEmpty) return;
+
+    try {
+      final recommended = await _fetchRecommendedSong(baseYtid);
+
+      // Fetching takes a few seconds, long enough for a sleep timer to fire
+      // or the player to be stopped; neither wants a song starting now.
+      if (sleepTimerExpired ||
+          audioPlayer.processingState == ProcessingState.idle) {
+        return;
+      }
+
+      // A background fetch may have appended its own song while we waited.
+      if (hasNext) {
+        await _playFromQueue(_currentQueueIndex + 1);
+        return;
+      }
+
+      // Another song took over meanwhile: skipping past it is its own call.
+      if (_getCurrentSongForRecommendations()?['ytid']?.toString() !=
+          baseYtid) {
+        return;
+      }
+
+      if (recommended == null) {
+        logger.log('No recommended song to skip to');
+        return;
+      }
+
+      await _insertRecommendedSong(recommended, playNow: true);
+    } catch (e, stackTrace) {
+      logger.log(
+        'Error skipping to recommended song',
         error: e,
         stackTrace: stackTrace,
       );
@@ -948,7 +1019,7 @@ class MusifyAudioHandler extends BaseAudioHandler {
     }
   }
 
-  Future<void> _insertRecommendedSong(Map song) async {
+  Future<void> _insertRecommendedSong(Map song, {bool playNow = false}) async {
     try {
       if (song['ytid'] == null || song['ytid'].toString().isEmpty) {
         logger.log('Invalid recommended song data for queue');
@@ -957,12 +1028,13 @@ class MusifyAudioHandler extends BaseAudioHandler {
 
       final insertIndex = _queueList.length;
       final shouldPlayInsertedSong =
-          playNextSongAutomatically.value &&
-          !sleepTimerExpired &&
-          _currentLoadingIndex == -1 &&
-          audioPlayer.processingState == ProcessingState.completed &&
-          _queueList.isNotEmpty &&
-          _currentQueueIndex == _queueList.length - 1;
+          playNow ||
+          (playNextSongAutomatically.value &&
+              !sleepTimerExpired &&
+              _currentLoadingIndex == -1 &&
+              audioPlayer.processingState == ProcessingState.completed &&
+              _queueList.isNotEmpty &&
+              _currentQueueIndex == _queueList.length - 1);
       final queueSong = _queueEntryIds.createSong(song);
       queueSong['isAutoPicked'] = true;
       _queueList.insert(insertIndex, queueSong);
@@ -1496,6 +1568,15 @@ class MusifyAudioHandler extends BaseAudioHandler {
       : null;
 
   bool get hasNext => _currentQueueIndex < _queueList.length - 1;
+
+  /// The player can pick a song on its own, so the queue running out is not
+  /// the end of playback.
+  bool get canFetchRecommendedSong =>
+      playNextSongAutomatically.value &&
+      !offlineMode.value &&
+      currentSong != null;
+
+  bool get canSkipToNext => hasNext || canFetchRecommendedSong;
 
   bool get hasPrevious => _currentQueueIndex > 0 || _historyList.isNotEmpty;
 
@@ -2923,10 +3004,10 @@ class MusifyAudioHandler extends BaseAudioHandler {
       } else if (repeatNotifier.value == AudioServiceRepeatMode.all &&
           _queueList.isNotEmpty) {
         await _playFromQueue(0);
-      } else if (playNextSongAutomatically.value &&
-          _currentLoadingIndex == -1) {
-        // At end of queue with auto-play enabled - trigger background fetch
-        unawaited(_backgroundAddSongsToQueue());
+      } else if (canFetchRecommendedSong && _currentLoadingIndex == -1) {
+        // At the end of the queue: play what the player would have picked on
+        // its own once the current song ended (closes: #952)
+        await _skipToRecommendedSong();
       }
 
       _cleanupOldPreloadedSongs();

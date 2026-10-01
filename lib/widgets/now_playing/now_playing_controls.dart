@@ -472,7 +472,7 @@ class _PlaybackControlsRow extends StatelessWidget {
                   _PlaybackControlButton(
                     icon: FluentIcons.next_24_regular,
                     isEnabled:
-                        audioHandler.hasNext ||
+                        audioHandler.canSkipToNext ||
                         repeatMode == AudioServiceRepeatMode.one,
                     tooltip: context.l10n!.skipToNext,
                     onPressed: () => repeatMode == AudioServiceRepeatMode.one
