@@ -27,6 +27,7 @@ import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:musify/constants/clients.dart';
 import 'package:musify/main.dart';
 import 'package:musify/models/position_data.dart';
 import 'package:musify/services/common_services.dart';
@@ -2525,6 +2526,10 @@ class MusifyAudioHandler extends BaseAudioHandler {
         }
         final songId = song['ytid']?.toString();
         if (songId != null && songId.isNotEmpty) {
+          // Why the player refused this source is not in the exception, so ask
+          // the stream itself while the failure is still fresh.
+          unawaited(_probeStreamFailure(songId, songUrl));
+
           await invalidateSongStreamCache(songId);
 
           final refreshedUrl = await fetchSongStreamUrl(
@@ -2709,7 +2714,25 @@ class MusifyAudioHandler extends BaseAudioHandler {
       }
 
       final uri = Uri.parse(songUrl);
-      final audioSource = AudioSource.uri(uri, tag: tag);
+      final sendClientHeaders = _isYoutubeStreamUri(uri);
+
+      // Headers move the request off the player and onto just_audio's local
+      // proxy, which is a different HTTP stack on a different port. A user
+      // whose songs stop playing can only tell us which of the two fetched
+      // them if it is written down here.
+      final fetchedBy = sendClientHeaders
+          ? 'the local proxy as ${_clientUserAgent ?? 'an unnamed client'} '
+                '(${customClientHeaders.keys.join(', ')})'
+          : 'the player itself';
+      logger.log(
+        'Streaming ${song['ytid']} from ${uri.host} through $fetchedBy',
+      );
+
+      final audioSource = AudioSource.uri(
+        uri,
+        headers: sendClientHeaders ? customClientHeaders : null,
+        tag: tag,
+      );
 
       if (!sponsorBlockSupport.value) {
         return audioSource;
@@ -2727,6 +2750,65 @@ class MusifyAudioHandler extends BaseAudioHandler {
         stackTrace: stackTrace,
       );
       return null;
+    }
+  }
+
+  /// Whether [uri] points at a YouTube stream, and so needs the headers of
+  /// the client that minted it. Radio stations keep the player's own headers.
+  static bool _isYoutubeStreamUri(Uri uri) {
+    final host = uri.host.toLowerCase();
+    return host == 'googlevideo.com' || host.endsWith('.googlevideo.com');
+  }
+
+  /// The identity the stream URLs are tied to, for the log. Looked up rather
+  /// than read by key: the casing of a header name is not ours to assume.
+  static String? get _clientUserAgent {
+    for (final entry in customClientHeaders.entries) {
+      if (entry.key.toLowerCase() == 'user-agent') return entry.value;
+    }
+    return null;
+  }
+
+  /// Asks the stream for its first bytes the way the player just did, and
+  /// writes down what comes back.
+  ///
+  /// just_audio reports every source failure as a bare `Source error`: the
+  /// reason ExoPlayer saw goes to logcat and never reaches the app, so a
+  /// user's copied logs cannot say whether the stream was refused, timed out,
+  /// or served something unplayable. Sending the headers through a proxy is
+  /// exactly the kind of change that can be refused on one device and not
+  /// another, so the question is asked again from Dart, where the answer can
+  /// be written where the user can reach it.
+  Future<void> _probeStreamFailure(String? songId, String songUrl) async {
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 10);
+
+    try {
+      final uri = Uri.parse(songUrl);
+      final request = await client.getUrl(uri);
+
+      if (_isYoutubeStreamUri(uri)) {
+        customClientHeaders.forEach(request.headers.set);
+      }
+      // The status is the whole point, so stop at the first bytes rather than
+      // pull a song down a second time.
+      request.headers.set(HttpHeaders.rangeHeader, 'bytes=0-1');
+
+      final response = await request.close().timeout(
+        const Duration(seconds: 15),
+      );
+      await response.drain<void>();
+
+      logger.log(
+        'Stream probe for $songId: HTTP ${response.statusCode} '
+        '${response.reasonPhrase}, type ${response.headers.contentType}, '
+        'length ${response.headers.value(HttpHeaders.contentLengthHeader)}, '
+        'host ${uri.host}',
+      );
+    } catch (e) {
+      logger.log('Stream probe for $songId failed', error: e);
+    } finally {
+      client.close(force: true);
     }
   }
 
