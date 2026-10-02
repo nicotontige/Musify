@@ -22,6 +22,7 @@
 import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:musify/constants/app_constants.dart';
+import 'package:musify/main.dart';
 import 'package:musify/services/settings_manager.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
@@ -131,13 +132,67 @@ AudioOnlyStreamInfo? selectAudioOnlyStreamForQuality(
 
   final qualitySetting = audioQualitySetting.value;
 
+  final AudioOnlyStreamInfo selected;
   if (qualitySetting == 'low') {
-    return selectionPool.last;
+    selected = selectionPool.last;
   } else if (qualitySetting == 'medium') {
-    return selectionPool[(selectionPool.length - 1) ~/ 2];
+    selected = selectionPool[(selectionPool.length - 1) ~/ 2];
+  } else {
+    selected = selectionPool.first;
   }
 
-  return selectionPool.first;
+  final chosen = _preferUnthrottledStream(selectionPool, selected);
+
+  // Which stream a device ends up on is the first thing to know when a song
+  // will not play there and plays everywhere else, and it is not something a
+  // user can find out for us. The whole pool goes in: a stream missing from
+  // one device's manifest is as telling as the one that was picked.
+  logger.log(
+    'Picked ${_describeStream(chosen)} for quality $qualitySetting'
+    '${identical(chosen, selected) ? '' : ', over throttled '
+          '${_describeStream(selected)}'}'
+    ' — pool of ${selectionPool.length}'
+    '${compatibleSources.isEmpty ? ' (none compatible, took them all)' : ''}: '
+    '${selectionPool.map(_describeStream).join(' | ')}',
+  );
+
+  return chosen;
+}
+
+/// A stream in one line of log: enough to tell two apart, nothing that could
+/// carry a URL or the identity it was minted for.
+String _describeStream(AudioOnlyStreamInfo stream) =>
+    'itag ${stream.tag} ${stream.audioCodec} '
+    '${stream.bitrate.kiloBitsPerSecond.round()}kbps '
+    '${stream.size.totalMegaBytes.toStringAsFixed(1)}MB'
+    '${stream.isThrottled ? ' throttled' : ''}';
+
+/// How far below the selected bitrate an unthrottled stream may sit and still
+/// count as the same quality.
+const _unthrottledBitrateTolerance = 0.1;
+
+/// YouTube caps the delivery rate of a stream whose URL isn't flagged
+/// `ratebypass`, which starves the player's buffer during playback since it
+/// reads the stream in one long request. Swap in an unthrottled stream when
+/// one is offered at the quality [selected] already settled on.
+AudioOnlyStreamInfo _preferUnthrottledStream(
+  List<AudioOnlyStreamInfo> selectionPool,
+  AudioOnlyStreamInfo selected,
+) {
+  if (!selected.isThrottled) return selected;
+
+  final minBitrate =
+      selected.bitrate.bitsPerSecond * (1 - _unthrottledBitrateTolerance);
+
+  // selectionPool is sorted by descending bitrate, so the first match is the
+  // best stream that qualifies.
+  for (final stream in selectionPool) {
+    if (!stream.isThrottled && stream.bitrate.bitsPerSecond >= minBitrate) {
+      return stream;
+    }
+  }
+
+  return selected;
 }
 
 List<AudioOnlyStreamInfo> _filterCompatibleAudioOnlySources(
