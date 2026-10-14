@@ -260,6 +260,20 @@ class SettingsPage extends StatelessWidget {
           },
         ),
         ValueListenableBuilder<bool>(
+          valueListenable: smartShuffleEnabled,
+          builder: (_, value, __) {
+            return CustomBar(
+              context.l10n!.smartShuffle,
+              FluentIcons.arrow_shuffle_24_regular,
+              description: context.l10n!.smartShuffleDescription,
+              trailing: Switch(
+                value: value,
+                onChanged: (value) => _toggleSmartShuffle(context, value),
+              ),
+            );
+          },
+        ),
+        ValueListenableBuilder<bool>(
           valueListenable: externalRecommendations,
           builder: (_, value, __) {
             return CustomBar(
@@ -772,6 +786,12 @@ class SettingsPage extends StatelessWidget {
   void _toggleAutomaticUpdateChecks(BuildContext context, bool value) {
     addOrUpdateData<bool>('settings', 'shouldWeCheckUpdates', value);
     shouldWeCheckUpdates.value = value;
+    showToast(context, context.l10n!.settingChangedMsg);
+  }
+
+  void _toggleSmartShuffle(BuildContext context, bool value) {
+    addOrUpdateData<bool>('settings', 'smartShuffleEnabled', value);
+    smartShuffleEnabled.value = value;
     showToast(context, context.l10n!.settingChangedMsg);
   }
 

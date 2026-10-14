@@ -259,6 +259,8 @@
   "sleepTimer": "Sleep timer",
   "sleepTimerCancelled": "Sleep timer cancelled",
   "sleepTimerSet": "Sleep timer set",
+  "smartShuffle": "Smart shuffle",
+  "smartShuffleDescription": "Weave recommended songs into the queue while it plays, without changing what is already lined up.",
   "songAdded": "Song added",
   "songAddedToOffline": "Song is now available offline",
   "songAlreadyInPlaylist": "Song is already in the playlist",
