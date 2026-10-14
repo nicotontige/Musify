@@ -25,9 +25,11 @@ import 'package:hive/hive.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:musify/main.dart' show logger;
 import 'package:musify/services/data_manager.dart';
+import 'package:musify/services/scrobbling_service.dart';
 import 'package:musify/services/settings_manager.dart';
 import 'package:musify/utilities/listening_stats_utils.dart';
 import 'package:musify/utilities/map_utils.dart';
+import 'package:musify/utilities/scrobble_rules.dart';
 
 final listeningStatsService = ListeningStatsService();
 
@@ -49,8 +51,20 @@ class ListeningStatsService {
   Duration? _sessionDuration;
   Duration _sessionListened = Duration.zero;
   DateTime? _sessionLastTick;
+  DateTime? _sessionStartedAt;
   bool _sessionQualified = false;
+  bool _sessionScrobbled = false;
   bool _sessionLastAudioPlayerPlaying = false;
+
+  /// Where a qualified listen is handed over for scrobbling. Swapped out in
+  /// tests; in the app it is the real service, which sends nothing at all
+  /// until the user has connected an account.
+  ScrobbleReporter scrobbleReporter = scrobblingService;
+
+  /// Playback sessions are tracked for the local stats, for scrobbling, or
+  /// for both: either consumer being on is enough to keep the bookkeeping.
+  bool get _sessionTrackingEnabled =>
+      wrappedEnabled.value || scrobbleReporter.isActive;
 
   bool get hasStats {
     final now = DateTime.now();
@@ -167,7 +181,7 @@ class ListeningStatsService {
     Duration? duration,
     DateTime? startedAt,
   }) {
-    if (!wrappedEnabled.value) return;
+    if (!_sessionTrackingEnabled) return;
 
     final ytid = song['ytid']?.toString();
     if (ytid == null || ytid.isEmpty) return;
@@ -177,14 +191,18 @@ class ListeningStatsService {
     _sessionDuration = duration ?? _durationFromSong(song);
     _sessionListened = Duration.zero;
     _sessionQualified = false;
+    _sessionScrobbled = false;
     _sessionLastTick = startedAt ?? DateTime.now();
+    _sessionStartedAt = _sessionLastTick;
     // A session is started only once playback has begun, so mark it playing now;
     // otherwise ticks before the next playerState transition would be dropped.
     _sessionLastAudioPlayerPlaying = true;
+
+    scrobbleReporter.reportNowPlaying(song, duration: _sessionDuration);
   }
 
   void resumeListeningSession({Map? currentSong}) {
-    if (!wrappedEnabled.value) return;
+    if (!_sessionTrackingEnabled) return;
 
     final song = currentSong;
     if (song == null) return;
@@ -222,12 +240,11 @@ class ListeningStatsService {
     final listenedDuration = now.difference(lastTick);
     if (listenedDuration <= Duration.zero) return;
 
-    if (!wrappedEnabled.value) {
-      return;
-    }
-
     _sessionListened += listenedDuration;
+    // Both recording calls below check the listening stats setting for
+    // themselves, so a session kept alive only for scrobbling records nothing.
     recordListeningTime(listenedDuration, listenedAt: now);
+    _reportScrobbleIfEligible(song);
 
     if (!_sessionQualified) {
       if (_sessionListened >= qualifiedPlaybackThreshold(_sessionDuration)) {
@@ -289,7 +306,9 @@ class ListeningStatsService {
     _sessionDuration = null;
     _sessionListened = Duration.zero;
     _sessionLastTick = null;
+    _sessionStartedAt = null;
     _sessionQualified = false;
+    _sessionScrobbled = false;
     _sessionLastAudioPlayerPlaying = false;
     if (flushStats) {
       unawaited(
@@ -308,7 +327,7 @@ class ListeningStatsService {
     Map? currentSong,
     bool isPlaying = false,
   }) {
-    if (!wrappedEnabled.value || _sessionSong != null || !isPlaying) {
+    if (!_sessionTrackingEnabled || _sessionSong != null || !isPlaying) {
       return;
     }
 
@@ -316,6 +335,30 @@ class ListeningStatsService {
     if (song != null) {
       startListeningSession(song);
     }
+  }
+
+  /// Hands the current session over to the scrobbling service as soon as it
+  /// has been played for long enough, once per session. The timestamp sent is
+  /// the start of playback, which is the one both services record.
+  void _reportScrobbleIfEligible(Map song) {
+    if (_sessionScrobbled) return;
+
+    final startedAt = _sessionStartedAt;
+    if (startedAt == null) return;
+
+    if (!isScrobbleEligible(
+      listened: _sessionListened,
+      trackDuration: _sessionDuration,
+    )) {
+      return;
+    }
+
+    _sessionScrobbled = true;
+    scrobbleReporter.reportListen(
+      song,
+      startedAt: startedAt,
+      duration: _sessionDuration,
+    );
   }
 
   Duration? _durationFromSong(Map song) {
