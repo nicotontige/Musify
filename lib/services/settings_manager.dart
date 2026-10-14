@@ -49,6 +49,10 @@ final offlineMode = ValueNotifier<bool>(
   Hive.box('settings').get('offlineMode', defaultValue: false),
 );
 
+final hideOfflinePlaylistSongs = ValueNotifier<bool>(
+  Hive.box('settings').get('hideOfflinePlaylistSongs', defaultValue: false),
+);
+
 final wrappedEnabled = ValueNotifier<bool>(
   Hive.box('settings').get('wrappedEnabled', defaultValue: true),
 );
@@ -160,6 +164,10 @@ void reloadSettingsFromStorage() {
     defaultValue: false,
   );
   offlineMode.value = settings.get('offlineMode', defaultValue: false);
+  hideOfflinePlaylistSongs.value = settings.get(
+    'hideOfflinePlaylistSongs',
+    defaultValue: false,
+  );
   wrappedEnabled.value = settings.get('wrappedEnabled', defaultValue: true);
   sponsorBlockSupport.value = settings.get(
     'sponsorBlockSupport',
