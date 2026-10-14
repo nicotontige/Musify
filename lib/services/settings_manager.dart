@@ -57,6 +57,10 @@ final wrappedEnabled = ValueNotifier<bool>(
   Hive.box('settings').get('wrappedEnabled', defaultValue: true),
 );
 
+final scrobblingEnabled = ValueNotifier<bool>(
+  Hive.box('settings').get('scrobblingEnabled', defaultValue: false),
+);
+
 final sponsorBlockSupport = ValueNotifier<bool>(
   Hive.box('settings').get('sponsorBlockSupport', defaultValue: false),
 );
@@ -169,6 +173,10 @@ void reloadSettingsFromStorage() {
     defaultValue: false,
   );
   wrappedEnabled.value = settings.get('wrappedEnabled', defaultValue: true);
+  scrobblingEnabled.value = settings.get(
+    'scrobblingEnabled',
+    defaultValue: false,
+  );
   sponsorBlockSupport.value = settings.get(
     'sponsorBlockSupport',
     defaultValue: false,

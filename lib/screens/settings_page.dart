@@ -294,7 +294,6 @@ class SettingsPage extends StatelessWidget {
               context.l10n!.externalRecommendations,
               FluentIcons.channel_share_24_regular,
               description: context.l10n!.externalRecommendationsDescription,
-              borderRadius: commonCustomBarRadiusLast,
               trailing: Switch(
                 value: value,
                 onChanged: (value) =>
@@ -302,6 +301,13 @@ class SettingsPage extends StatelessWidget {
               ),
             );
           },
+        ),
+        CustomBar(
+          context.l10n!.scrobbling,
+          FluentIcons.cloud_sync_24_regular,
+          description: context.l10n!.scrobblingDescription,
+          borderRadius: commonCustomBarRadiusLast,
+          onTap: () => context.push('/settings/scrobbling'),
         ),
 
         _buildToolsSection(context),
