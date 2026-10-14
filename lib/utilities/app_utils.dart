@@ -117,16 +117,36 @@ String formatMonthPeriodLabel(Locale locale, String monthKey) {
       : '${label[0].toUpperCase()}${label.substring(1)}';
 }
 
-AudioOnlyStreamInfo? selectAudioOnlyStreamForQuality(
-  List<AudioOnlyStreamInfo> availableSources,
+/// The streams worth offering the player, best list first.
+///
+/// A stream whose URL came back empty is unusable however good its metadata
+/// looks, and the android client answers with a full list of audio-only
+/// formats whose URLs are all empty strings — picking one of those caches a
+/// dead manifest and fails later, and worse, than failing here.
+///
+/// Muxed streams are a last resort: they carry a 360p video track nobody
+/// listens to, at roughly three times the bitrate of the audio alone. But for
+/// a video YouTube marks "made for kids" they are the only thing any client
+/// still serves, so a nursery rhyme plays at that price or not at all.
+List<AudioStreamInfo> playableAudioSources(StreamManifest manifest) {
+  final audioOnly = manifest.audioOnly.where(_hasUsableUrl).toList();
+  if (audioOnly.isNotEmpty) return audioOnly;
+
+  return manifest.muxed.where(_hasUsableUrl).toList();
+}
+
+bool _hasUsableUrl(StreamInfo stream) => stream.url.host.isNotEmpty;
+
+AudioStreamInfo? selectAudioStreamForQuality(
+  List<AudioStreamInfo> availableSources,
 ) {
   if (availableSources.isEmpty) return null;
 
-  final compatibleSources = _filterCompatibleAudioOnlySources(availableSources);
+  final compatibleSources = _filterCompatibleAudioSources(availableSources);
   final selectionPool =
       (compatibleSources.isNotEmpty
             ? compatibleSources
-            : List<AudioOnlyStreamInfo>.from(availableSources))
+            : List<AudioStreamInfo>.from(availableSources))
         ..sort((a, b) => b.bitrate.compareTo(a.bitrate));
 
   final qualitySetting = audioQualitySetting.value;
@@ -140,15 +160,13 @@ AudioOnlyStreamInfo? selectAudioOnlyStreamForQuality(
   return selectionPool.first;
 }
 
-List<AudioOnlyStreamInfo> _filterCompatibleAudioOnlySources(
-  List<AudioOnlyStreamInfo> sources,
+List<AudioStreamInfo> _filterCompatibleAudioSources(
+  List<AudioStreamInfo> sources,
 ) {
-  return sources
-      .where((stream) => _audioOnlyCompatibilityScore(stream) >= 2)
-      .toList();
+  return sources.where((stream) => _audioCompatibilityScore(stream) >= 2).toList();
 }
 
-int _audioOnlyCompatibilityScore(AudioOnlyStreamInfo stream) {
+int _audioCompatibilityScore(AudioStreamInfo stream) {
   final codec = stream.codec.toString().toLowerCase();
   final container = stream.container.name.toLowerCase();
 

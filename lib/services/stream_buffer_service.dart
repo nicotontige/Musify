@@ -115,7 +115,7 @@ class BufferedStreamAudioSource extends StreamAudioSource {
   static int _nextBufferId = 0;
 
   final String songId;
-  final AudioOnlyStreamInfo streamInfo;
+  final AudioStreamInfo streamInfo;
   final File bufferFile;
 
   Future<void>? _download;

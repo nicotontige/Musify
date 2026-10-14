@@ -642,7 +642,7 @@ Future<Map<String, dynamic>?> getSimilarSong(
 /// quality setting. The Hive cache only keeps the URL, so without this every
 /// caller that needs the stream itself (bitrate, codec) would fetch the
 /// manifest again right after playback already resolved it.
-final Map<String, ({AudioOnlyStreamInfo stream, DateTime resolvedAt})>
+final Map<String, ({AudioStreamInfo stream, DateTime resolvedAt})>
 _selectedAudioStreams = {};
 
 const _maxSelectedAudioStreams = 50;
@@ -652,7 +652,7 @@ String _selectedAudioStreamKey(String songId) =>
 
 /// Returns the stream resolved earlier for a song, unless it is old enough
 /// that its URL may have expired.
-AudioOnlyStreamInfo? _getSelectedAudioStream(String songId) {
+AudioStreamInfo? _getSelectedAudioStream(String songId) {
   final key = _selectedAudioStreamKey(songId);
   final entry = _selectedAudioStreams[key];
   if (entry == null) return null;
@@ -665,7 +665,7 @@ AudioOnlyStreamInfo? _getSelectedAudioStream(String songId) {
   return entry.stream;
 }
 
-void _cacheSelectedAudioStream(String songId, AudioOnlyStreamInfo stream) {
+void _cacheSelectedAudioStream(String songId, AudioStreamInfo stream) {
   if (_selectedAudioStreams.length >= _maxSelectedAudioStreams) {
     _selectedAudioStreams.remove(_selectedAudioStreams.keys.first);
   }
@@ -684,7 +684,7 @@ Future<void> invalidateSongStreamCache(String songId) async {
 }
 
 /// Fetches the best available audio stream for a song.
-Future<AudioOnlyStreamInfo?> fetchBestAudioStream(String? songId) async {
+Future<AudioStreamInfo?> fetchBestAudioStream(String? songId) async {
   try {
     if (songId == null || songId.isEmpty) {
       logger.log('fetchBestAudioStream: songId is null or empty');
@@ -695,13 +695,18 @@ Future<AudioOnlyStreamInfo?> fetchBestAudioStream(String? songId) async {
     if (cachedStream != null) return cachedStream;
 
     final manifest = await _fetchStreamManifest(songId);
-    final audioStream = manifest?.audioOnly;
-    if (audioStream == null || audioStream.isEmpty) {
+    if (manifest == null) {
+      logger.log('fetchBestAudioStream: no manifest for $songId');
+      return null;
+    }
+
+    final audioStream = playableAudioSources(manifest);
+    if (audioStream.isEmpty) {
       logger.log('fetchBestAudioStream: no audio streams for $songId');
       return null;
     }
 
-    final selectedStream = selectAudioOnlyStreamForQuality(audioStream);
+    final selectedStream = selectAudioStreamForQuality(audioStream);
     if (selectedStream == null) {
       logger.log(
         'fetchBestAudioStream: no compatible audio streams for $songId',
