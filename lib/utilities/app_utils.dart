@@ -259,3 +259,22 @@ int? queuePositionAfterFailure(
   final resumeAt = failedIndex + 1;
   return resumeAt < queueEntryIds.length ? resumeAt : null;
 }
+
+/// How far into a song the previous button still steps back a song; past it,
+/// pressing back restarts what is playing.
+const skipBackRestartThreshold = Duration(seconds: 5);
+
+/// Whether the previous button restarts the song playing instead of stepping
+/// back to the one before it.
+///
+/// This is the convention CD players and click wheel iPods set: a few seconds
+/// in, back means "play this again", and only a press right at the start of a
+/// song steps back. With nothing queued behind it, a song has nowhere to step
+/// back to, so it restarts whenever back is pressed.
+bool skipBackRestartsSong({
+  required Duration position,
+  required bool hasPrevious,
+  Duration threshold = skipBackRestartThreshold,
+}) {
+  return !hasPrevious || position >= threshold;
+}
