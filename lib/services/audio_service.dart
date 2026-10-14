@@ -38,6 +38,7 @@ import 'package:musify/services/listening_stats_service.dart';
 import 'package:musify/services/playback_failure_recovery.dart';
 import 'package:musify/services/queue_persistence_service.dart';
 import 'package:musify/services/settings_manager.dart';
+import 'package:musify/services/smart_shuffle_service.dart';
 import 'package:musify/services/stream_buffer_service.dart';
 import 'package:musify/utilities/app_utils.dart';
 import 'package:musify/utilities/map_utils.dart';
@@ -1616,6 +1617,21 @@ class MusifyAudioHandler extends BaseAudioHandler implements AndroidAutoHost {
           if (playNextSongAutomatically.value) {
             unawaited(_backgroundAddSongsToQueue());
           }
+          unawaited(
+            smartShuffleService.weaveIntoQueue(
+              snapshot: () => SmartShuffleQueueState(
+                queue: _queueList,
+                history: _historyList,
+                currentIndex: _currentQueueIndex,
+                isPlaying: audioPlayer.playing,
+              ),
+              insertSong: (song, index) => _insertSongToQueueInternal(
+                song,
+                index,
+                flagName: 'isAutoPicked',
+              ),
+            ),
+          );
         } else {
           _currentQueueIndex = previousQueueIndex;
           if (previousMediaItem != null) {
