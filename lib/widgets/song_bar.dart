@@ -771,6 +771,32 @@ String? _firstNonEmptyString(Iterable<Object?> values) {
   return null;
 }
 
+/// The small round marker pinned to the top right corner of an artwork.
+class _ArtworkBadge extends StatelessWidget {
+  const _ArtworkBadge({
+    required this.icon,
+    required this.backgroundColor,
+    required this.foregroundColor,
+  });
+
+  final IconData icon;
+  final Color backgroundColor;
+  final Color foregroundColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 20,
+      height: 20,
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        shape: BoxShape.circle,
+      ),
+      child: Icon(icon, size: 11, color: foregroundColor),
+    );
+  }
+}
+
 class _OfflineArtwork extends StatelessWidget {
   const _OfflineArtwork({
     required this.artworkPath,
@@ -805,18 +831,10 @@ class _OfflineArtwork extends StatelessWidget {
               Positioned(
                 top: 3,
                 right: 3,
-                child: Container(
-                  width: 20,
-                  height: 20,
-                  decoration: BoxDecoration(
-                    color: colorScheme.primaryContainer,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    FluentIcons.heart_24_filled,
-                    size: 11,
-                    color: colorScheme.onPrimaryContainer,
-                  ),
+                child: _ArtworkBadge(
+                  icon: FluentIcons.heart_24_filled,
+                  backgroundColor: colorScheme.primaryContainer,
+                  foregroundColor: colorScheme.onPrimaryContainer,
                 ),
               ),
           ],
@@ -877,18 +895,10 @@ class _OnlineArtwork extends StatelessWidget {
                     Positioned(
                       top: 3,
                       right: 3,
-                      child: Container(
-                        width: 20,
-                        height: 20,
-                        decoration: BoxDecoration(
-                          color: colorScheme.primaryContainer,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          FluentIcons.heart_24_filled,
-                          size: 11,
-                          color: colorScheme.onPrimaryContainer,
-                        ),
+                      child: _ArtworkBadge(
+                        icon: FluentIcons.heart_24_filled,
+                        backgroundColor: colorScheme.primaryContainer,
+                        foregroundColor: colorScheme.onPrimaryContainer,
                       ),
                     ),
                 ],
