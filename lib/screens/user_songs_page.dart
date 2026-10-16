@@ -58,6 +58,15 @@ class _UserSongsPageState extends State<UserSongsPage> {
   late final TextEditingController _searchController;
   late final FocusNode _searchFocusNode;
 
+  /// The list the page shows, and the notifier it has to rebuild with.
+  ValueNotifier<List> get _songsNotifier => switch (widget.page) {
+    'liked' => userLikedSongsList,
+    'offline' => userOfflineSongs,
+    _ => userRecentlyPlayed,
+  };
+
+  List get _songsList => _songsNotifier.value;
+
   List _getDisplayList(List songsList) {
     var list = filterSongsByQuery(songsList, _searchQueryNotifier.value);
     if (widget.page == 'offline') {
@@ -91,11 +100,7 @@ class _UserSongsPageState extends State<UserSongsPage> {
       body: Padding(
         padding: commonSingleChildScrollViewPadding,
         child: ValueListenableBuilder(
-          valueListenable: widget.page == 'liked'
-              ? userLikedSongsList
-              : widget.page == 'offline'
-              ? userOfflineSongs
-              : userRecentlyPlayed,
+          valueListenable: _songsNotifier,
           builder: (_, songsList, __) => _buildCustomScrollView(
             title,
             icon,
@@ -189,11 +194,7 @@ class _UserSongsPageState extends State<UserSongsPage> {
                     icon: const Icon(FluentIcons.play_24_filled),
                     label: Text(context.l10n!.play),
                     onPressed: () {
-                      final songsList = widget.page == 'liked'
-                          ? userLikedSongsList.value
-                          : widget.page == 'offline'
-                          ? userOfflineSongs.value
-                          : userRecentlyPlayed.value;
+                      final songsList = _songsList;
                       var sortedList = songsList;
                       if (isOfflineSongs) {
                         sortedList = _sortOfflineSongsLocal(
@@ -225,11 +226,7 @@ class _UserSongsPageState extends State<UserSongsPage> {
                     icon: const Icon(FluentIcons.arrow_shuffle_24_filled),
                     label: Text(context.l10n!.shuffle),
                     onPressed: () async {
-                      final songs = widget.page == 'liked'
-                          ? userLikedSongsList.value
-                          : widget.page == 'offline'
-                          ? userOfflineSongs.value
-                          : userRecentlyPlayed.value;
+                      final songs = _songsList;
                       if (songs.isEmpty) return;
                       await audioHandler.addPlaylistToQueue(
                         List<Map>.from(songs.whereType<Map>()),
@@ -316,11 +313,7 @@ class _UserSongsPageState extends State<UserSongsPage> {
     return ValueListenableBuilder<String>(
       valueListenable: _searchQueryNotifier,
       builder: (_, searchQuery, __) {
-        final songsList = widget.page == 'liked'
-            ? userLikedSongsList.value
-            : widget.page == 'offline'
-            ? userOfflineSongs.value
-            : userRecentlyPlayed.value;
+        final songsList = _songsList;
         final listKeyScope = 'user_song_${widget.page}';
         final isSearching = searchQuery.isNotEmpty;
         final displayList = _getDisplayList(songsList);
