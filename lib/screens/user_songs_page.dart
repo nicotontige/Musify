@@ -26,6 +26,7 @@ import 'package:musify/extensions/l10n.dart';
 import 'package:musify/main.dart' show logger, audioHandler;
 import 'package:musify/services/common_services.dart';
 import 'package:musify/services/data_manager.dart';
+import 'package:musify/services/playlist_download_service.dart';
 import 'package:musify/services/settings_manager.dart';
 import 'package:musify/utilities/app_utils.dart';
 import 'package:musify/utilities/flutter_toast.dart';
@@ -65,7 +66,20 @@ class _UserSongsPageState extends State<UserSongsPage> {
     _ => userRecentlyPlayed,
   };
 
-  List get _songsList => _songsNotifier.value;
+  /// Downloading a playlist, an album or an artist drops every one of its
+  /// songs into the offline list, which drowns the ones downloaded one by
+  /// one. The filter chip leaves only the latter.
+  List get _songsList {
+    final songs = _songsNotifier.value;
+    if (widget.page != 'offline' || !hideOfflinePlaylistSongs.value) {
+      return songs;
+    }
+
+    final playlistSongIds = offlinePlaylistService.getPlaylistSongIds();
+    return songs
+        .where((song) => !playlistSongIds.contains(song['ytid']?.toString()))
+        .toList();
+  }
 
   List _getDisplayList(List songsList) {
     var list = filterSongsByQuery(songsList, _searchQueryNotifier.value);
@@ -247,7 +261,9 @@ class _UserSongsPageState extends State<UserSongsPage> {
             ),
           ],
         ],
-        if (isOfflineSongs && songsLength > 1) ...[
+        // Gated on the whole offline list, not on what is left of it: the
+        // filter has to stay reachable once it has emptied the page.
+        if (isOfflineSongs && userOfflineSongs.value.length > 1) ...[
           const SizedBox(height: 20),
           SortChips<OfflineSortType>(
             currentSortType: _getCurrentOfflineSortType(),
@@ -263,6 +279,21 @@ class _UserSongsPageState extends State<UserSongsPage> {
                 offlineSortSetting = type.name;
               });
             },
+            trailing: [
+              SortChip(
+                label: context.l10n!.hidePlaylistSongs,
+                isSelected: hideOfflinePlaylistSongs.value,
+                onSelected: () => setState(() {
+                  final hide = !hideOfflinePlaylistSongs.value;
+                  hideOfflinePlaylistSongs.value = hide;
+                  addOrUpdateData<bool>(
+                    'settings',
+                    'hideOfflinePlaylistSongs',
+                    hide,
+                  );
+                }),
+              ),
+            ],
           ),
         ],
         if (songsLength > 0) ...[
